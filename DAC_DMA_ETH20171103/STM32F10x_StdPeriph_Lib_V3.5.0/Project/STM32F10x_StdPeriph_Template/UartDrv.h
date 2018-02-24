@@ -1,0 +1,74 @@
+#ifndef UART_DRV_H__
+#define UART_DRV_H__
+#include "stm32f10x.h"
+#define BUSY	1
+#define IDLE	0
+//#define ERR		4
+//#define WRN		3
+//#define PMT		2
+//#define DBG		1
+#define DEBUG_MSG_SIZE 256
+#define MAX_REV_BUF		80
+#define MAX_SEND_BUF	172
+
+#define MODE_TX		1
+#define MODE_RX		0
+#define TXEN_GPIO	GPIOB	
+#define TXEN_PIN	GPIO_Pin_2
+
+
+
+#define UART2_QUERY_SEND 0
+typedef struct
+{
+	unsigned char szBuffer[MAX_SEND_BUF];
+	int buLength;
+}SendEntity;
+typedef struct 
+{
+	unsigned char szBuffer[MAX_REV_BUF];
+	int buLength;
+}RecvEntity;
+
+//typedef struct 
+//{
+//	unsigned char szBuffer[MAX_SEND_BUF];
+//	unsigned char buLength;
+//}SendPackage;
+//typedef struct 
+//{
+//	unsigned char szBuffer[MAX_REV_BUF];
+//	unsigned char buLength;
+//}RecvPackage;
+
+
+int InitUart(unsigned int baud);
+void DMA1_Channel2_IRQHandler(void);
+void Set485Mode(char mode);
+void uart_isr(void);
+void uart2_isr(void);
+void receive_ascii(void);
+void receive_rtu(void);
+void SendPackage(char* s,unsigned char  len);
+//bit GetUart1SendStatus(void);
+char GetUart2SendStatus(void);
+//void PrintDebugInfo(char* strLog,char type);
+
+
+#if UART2_QUERY_SEND
+void SendByte2(unsigned char byte);
+void SendString2(char*s);
+#endif
+
+unsigned char SendByte(unsigned char ch);
+int SendBuffer(unsigned char* pString, unsigned int uLength);
+unsigned char SendByte3(char ch);
+int SendString3(char* pString);
+unsigned char SendByte1(unsigned char ch);
+int SendString1(const char* pString);
+
+uint8_t USART_Scanf(uint32_t value);
+
+
+#endif
+

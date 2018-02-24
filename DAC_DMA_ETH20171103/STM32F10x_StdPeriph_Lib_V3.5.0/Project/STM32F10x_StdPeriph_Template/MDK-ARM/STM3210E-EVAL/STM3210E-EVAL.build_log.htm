@@ -1,0 +1,61 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: μVision V5.12.0.0
+Copyright (C) 2014 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: 头 5, 5, LIC=9N0UH-W20R6-GM699-4SYXS-HQE6W-MY023
+ 
+Tool Versions:
+Toolchain:       *** Unknown Product ***  Version: 5.12.0.0
+Toolchain Path:  C:\Keil_v5\ARM\ARMCC\Bin
+C Compiler:      Armcc.exe V5.05 (build 41)
+Assembler:       Armasm.exe V5.05 (build 41)
+Linker/Locator:  ArmLink.exe V5.05 (build 41)
+Library Manager: ArmAr.exe V5.05 (build 41)
+Hex Converter:   FromElf.exe V5.05 (build 41)
+CPU DLL:         SARMCM3.DLL V5.12.0.0
+Dialog DLL:      DCM.DLL V1.13.0.0
+    Target DLL: STLink\ST-LINKIII-KEIL_SWO.dll
+Dialog DLL:      TCM.DLL V1.14.2.0
+ 
+<h2>Project:</h2>
+F:\SJ\综合通信系统\04编码\01文档\STM32F10x_StdPeriph_Lib_V3.5.0\Project\STM32F10x_StdPeriph_Template\MDK-ARM\Project.uvprojx
+Project File Date:  10/27/2017
+
+<h2>Output:</h2>
+Build target 'STM3210E-EVAL'
+compiling main.c...
+compiling simple_server.c...
+..\TCPIP\simple_server.c(111): warning:  #177-D: variable "i" was declared but never referenced
+        int i;
+..\TCPIP\simple_server.c(507): warning:  #167-D: argument of type "u8 *" is incompatible with parameter of type "char *restrict"
+                        sprintf(buf1,"{DEV_ID:%d},{LOST:%0.2f%%}\0",DEVICE_ID,lost_pkt_cnt*100.0/(lost_pkt_cnt+rcv_pkt_cnt));
+..\TCPIP\simple_server.c(511): warning:  #167-D: argument of type "u8 *" is incompatible with parameter of type "const char *"
+                        make_udp_reply_from_request(buf,buf1,strlen(buf1),myudpport);
+..\TCPIP\simple_server.c(511): warning:  #167-D: argument of type "u8 *" is incompatible with parameter of type "char *"
+                        make_udp_reply_from_request(buf,buf1,strlen(buf1),myudpport);
+..\TCPIP\simple_server.c: 4 warnings, 0 errors
+linking...
+Program Size: Code=12244 RO-data=1884 RW-data=120 ZI-data=48944  
+".\STM3210E-EVAL\STM3210E-EVAL.axf" - 0 Error(s), 4 Warning(s).
+
+<h2>Collection of Component include folders:</h2>
+  F:\SJ\综合通信系统\04编码\01文档\STM32F10x_StdPeriph_Lib_V3.5.0\Project\STM32F10x_StdPeriph_Template\MDK-ARM\RTE
+  C:\Keil_v5\ARM\PACK\Keil\STM32F1xx_DFP\2.0.0
+
+<h2>Collection of Component Files used:</h2>
+Load "F:\\SJ\\综合通信系统\\04编码\\01文档\\STM32F10x_StdPeriph_Lib_V3.5.0\\Project\\STM32F10x_StdPeriph_Template\\MDK-ARM\\STM3210E-EVAL\\STM3210E-EVAL.axf" 
+Erase Done.
+Programming Done.
+Verify OK.
+Application running ...
+</pre>
+</body>
+</html>
+iph_Lib_V3.5.0\\Project\\STM32F10x_StdPeriph_Template\\MDK-ARM\\STM3210E-EVAL\\STM3210E-EVAL.axf" 
+Erase Done.
+Programming Done.
+Verify OK.
+Application running ...

@@ -1,0 +1,612 @@
+/**
+  ******************************************************************************
+  * @file    DAC/DualModeDMA_SineWave/main.c 
+  * @author  MCD Application Team
+  * @version V3.5.0
+  * @date    08-April-2011
+  * @brief   Main program body.
+  ******************************************************************************
+  * @attention
+  *
+  * THE PRESENT FIRMWARE WHICH IS FOR GUIDANCE ONLY AIMS AT PROVIDING CUSTOMERS
+  * WITH CODING INFORMATION REGARDING THEIR PRODUCTS IN ORDER FOR THEM TO SAVE
+  * TIME. AS A RESULT, STMICROELECTRONICS SHALL NOT BE HELD LIABLE FOR ANY
+  * DIRECT, INDIRECT OR CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING
+  * FROM THE CONTENT OF SUCH FIRMWARE AND/OR THE USE MADE BY CUSTOMERS OF THE
+  * CODING INFORMATION CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
+  *
+  * <h2><center>&copy; COPYRIGHT 2011 STMicroelectronics</center></h2>
+  ******************************************************************************
+  */ 
+
+/* Includes ------------------------------------------------------------------*/
+#include "stm32f10x.h"
+#include <stdio.h>
+#include <string.h>
+#include "uartdrv.h"
+#include "log.h"
+#include "TCPIP/simple_server.h"
+#include "TCPIP/spi.h"
+#include "arr_fifo.h"
+/** @addtogroup STM32F10x_StdPeriph_Examples
+  * @{
+  */
+
+/** @addtogroup DAC_DualModeDMA_SineWave
+  * @{
+  */ 
+
+#ifdef __GNUC__
+/* With GCC/RAISONANCE, small printf (option LD Linker->Libraries->Small printf
+   set to 'Yes') calls __io_putchar() */
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+
+/* Private typedef -----------------------------------------------------------*/
+/* Private define ------------------------------------------------------------*/
+#define DAC_DHR12RD_Address      0x40007420
+#define DAC_DHR12LD_Address			0x40007424
+#define DAC_DHR8RD_Address      0x40007428
+/* Init Structure definition */
+DAC_InitTypeDef            DAC_InitStructure;
+DMA_InitTypeDef            DMA_InitStructure;
+TIM_TimeBaseInitTypeDef    TIM_TimeBaseStructure;
+uint32_t Idx = 0;  
+  
+extern const unsigned char PCM_WAV_8K_U8B[81632];	
+extern const unsigned char PCM_WAV_44K1_U16B[192000];
+extern const unsigned char PCM_WAV_48K_U18[192240];
+
+/* Private macro -------------------------------------------------------------*/
+/* Private variables ---------------------------------------------------------*/
+const uint16_t Sine12bit[32] = {
+                      2047, 2447, 2831, 3185, 3498, 3750, 3939, 4056, 4095, 4056,
+                      3939, 3750, 3495, 3185, 2831, 2447, 2047, 1647, 1263, 909, 
+                      599, 344, 155, 38, 0, 38, 155, 344, 599, 909, 1263, 1647};
+
+//uint32_t DualSine12bit[32];
+
+// 44.1KHz , 16bit 2ch，
+// 8KHz , 8bit 1ch，
+#define SAMPLE_CNT_OF_SIGLE_PKT	400
+#define UDP_PAYLOAD_SIZE	800
+#define PKT_CNT_OF_BUF	3	
+#define PCM8U	0
+#if PCM8U
+											// = 单个包采样数*采样大小
+// 1280 = 640*2 
+#define DAC_BUF_SIZE		640	// 2560B  80ms
+uint16_t g_u32dac12bit_buf0[DAC_BUF_SIZE]; // 播放正常声音的缓冲区
+uint16_t g_u32dac12bit_buf1[DAC_BUF_SIZE]; // 播放静音的缓冲区
+uint16_t g_u32dac12bit_buf3[DAC_BUF_SIZE]; // 接收数据的缓冲区	
+#else
+											// = 单个包采样数*采样大小
+// 1280 = 320*4
+#define DAC_BUF_SIZE		320	// 2560B  80ms
+uint32_t g_u32dac12bit_buf0[DAC_BUF_SIZE]; // 播放正常声音的缓冲区
+uint32_t g_u32dac12bit_buf1[DAC_BUF_SIZE]; // 播放静音的缓冲区
+const uint32_t g_u32dac12bit_buf3[DAC_BUF_SIZE]={
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+	0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,0x8000800,
+}; // 接收数据的缓冲区	
+#endif			
+
+#define FIFO_FRAME_CNT	34
+
+fifo_t pcm_fifo;
+uint32_t g_u32dac12bit_buf[DAC_BUF_SIZE*FIFO_FRAME_CNT]; // 播放正常声音的缓冲区
+ 
+ uint32_t buf_index = 0;
+__IO uint32_t buf_index_history = 0;
+__IO uint32_t buf_ready[2] = {0,0};
+// 收到的是每个采样2字节，两声道，需要转换为12bit两声道
+// sample = sample << 4;
+/* Private function prototypes -----------------------------------------------*/
+void RCC_Configuration(void);
+void GPIO_Configuration(void);
+void Delay(__IO uint32_t nCount);
+void Iwdg_Init(void);
+extern uint32_t sdz;
+int32_t fifo_time_out= 0;
+int32_t g_rcv_time_out=0;
+int main(void)
+{
+  /*!< At this stage the microcontroller clock setting is already configured, 
+       this is done through SystemInit() function which is called from startup
+       file (startup_stm32f10x_xx.s) before to branch to application main.
+       To reconfigure the default setting of SystemInit() function, refer to
+       system_stm32f10x.c file
+     */     
+	  
+  
+  /* System Clocks Configuration */
+  RCC_Configuration();   
+	InitUart(4000000);
+	Iwdg_Init();  
+	fifo_init(&pcm_fifo,(uint8_t*)g_u32dac12bit_buf,DAC_BUF_SIZE*FIFO_FRAME_CNT*sizeof(uint32_t));
+	
+  /* Once the DAC channel is enabled, the corresponding GPIO pin is automatically 
+     connected to the DAC converter. In order to avoid parasitic consumption, 
+     the GPIO pin should be configured in analog */
+  GPIO_Configuration();
+	  SPI1_Init();
+	InitServer();
+  /* TIM2 Configuration */
+  /* Time base configuration */
+  TIM_TimeBaseStructInit(&TIM_TimeBaseStructure); 
+	// 8KHz 
+  TIM_TimeBaseStructure.TIM_Period = 0xcc1;//0x1982;//0x661;//0xcc1;//0x1982;//0xcc1;//0x5DC;//0x2328;//0x19;          
+  TIM_TimeBaseStructure.TIM_Prescaler = 0x0;       
+  TIM_TimeBaseStructure.TIM_ClockDivision = 0x0;    
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  
+  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure);
+
+  /* TIM2 TRGO selection */
+  TIM_SelectOutputTrigger(TIM2, TIM_TRGOSource_Update);
+
+  /* DAC channel1 Configuration */
+  DAC_InitStructure.DAC_Trigger = DAC_Trigger_T2_TRGO;
+  DAC_InitStructure.DAC_WaveGeneration = DAC_WaveGeneration_None;
+  DAC_InitStructure.DAC_OutputBuffer = DAC_OutputBuffer_Enable;
+  DAC_Init(DAC_Channel_1, &DAC_InitStructure);
+
+  /* DAC channel2 Configuration */
+  DAC_Init(DAC_Channel_2, &DAC_InitStructure);
+
+  /* Fill Sine32bit table */
+	int sin_idx = 0;
+  for (Idx = 0; Idx < DAC_BUF_SIZE; Idx++)
+  {
+    //DualSine12bit[Idx] = (Sine12bit[Idx] << 16) + (Sine12bit[Idx]);
+		#if 0
+		g_u32dac12bit_buf0[Idx] = (Sine12bit[sin_idx] << 16) + (Sine12bit[sin_idx]);
+		g_u32dac12bit_buf1[Idx] = (Sine12bit[sin_idx] << 16) + (Sine12bit[sin_idx]);
+		#else
+		g_u32dac12bit_buf0[Idx] = (Sine12bit[sin_idx]>>8);
+		g_u32dac12bit_buf0[Idx] += (g_u32dac12bit_buf0[Idx]<<8);
+		g_u32dac12bit_buf1[Idx] = g_u32dac12bit_buf0[Idx];
+		#endif
+		g_u32dac12bit_buf1[Idx] = g_u32dac12bit_buf1[Idx]>>1;
+		#if PCM8U
+		g_u32dac12bit_buf3[Idx] = 0x8080;
+		#else
+//		g_u32dac12bit_buf1[Idx] = ((Sine12bit[sin_idx] << 4)&0xff00) + (Sine12bit[sin_idx]>>4);
+//		g_u32dac12bit_buf1[Idx] = 0x02000200;//0x8080;
+	//	g_u32dac12bit_buf3[Idx] = 0x8000800>>4;//0x8080;
+	//	g_u32dac12bit_buf3[Idx] = (Sine12bit[sin_idx] << 20) + (Sine12bit[sin_idx]<<4);
+		#endif
+		sin_idx ++;
+		if(sin_idx==32)
+			sin_idx = 0;
+  }
+
+#if !defined STM32F10X_LD_VL && !defined STM32F10X_MD_VL
+  /* DMA2 channel4 configuration */
+  DMA_DeInit(DMA2_Channel4);
+#else
+  /* DMA1 channel4 configuration */
+  DMA_DeInit(DMA1_Channel4);
+#endif
+	
+	#if PCM8U
+  DMA_InitStructure.DMA_PeripheralBaseAddr = DAC_DHR8D_Address;//DAC_DHR12LD_Address;// DAC_DHR12RD_Address;//DAC_DHR8RD_Address;
+	#else
+	DMA_InitStructure.DMA_PeripheralBaseAddr = DAC_DHR12LD_Address;//DAC_DHR12LD_Address;// DAC_DHR12RD_Address;//DAC_DHR8RD_Address;
+	#endif
+  DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)&g_u32dac12bit_buf1;//DualSine12bit;
+  DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;
+  DMA_InitStructure.DMA_BufferSize = DAC_BUF_SIZE;
+  DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+  DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+  DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Word;
+	#if PCM8U
+  DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;//DMA_MemoryDataSize_Word;
+	#else
+	DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_Word;//DMA_MemoryDataSize_Word;
+	#endif
+  DMA_InitStructure.DMA_Mode = DMA_Mode_Normal;//DMA_Mode_Circular;
+  DMA_InitStructure.DMA_Priority = DMA_Priority_High;
+  DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
+
+#if !defined STM32F10X_LD_VL && !defined STM32F10X_MD_VL
+  DMA_Init(DMA2_Channel4, &DMA_InitStructure);
+  /* Enable DMA2 Channel4 */
+  DMA_Cmd(DMA2_Channel4, ENABLE);
+#else
+  DMA_Init(DMA1_Channel4, &DMA_InitStructure);
+  /* Enable DMA1 Channel4 */
+  DMA_Cmd(DMA1_Channel4, ENABLE);
+#endif
+
+  /* Enable DAC Channel1: Once the DAC channel1 is enabled, PA.04 is 
+     automatically connected to the DAC converter. */
+  DAC_Cmd(DAC_Channel_1, ENABLE);
+  /* Enable DAC Channel2: Once the DAC channel2 is enabled, PA.05 is 
+     automatically connected to the DAC converter. */
+  DAC_Cmd(DAC_Channel_2, ENABLE);
+
+  /* Enable DMA for DAC Channel2 */
+  DAC_DMACmd(DAC_Channel_2, ENABLE);
+
+  /* TIM2 enable counter */
+  TIM_Cmd(TIM2, ENABLE);
+	#if 1
+	DMA_ITConfig(DMA2_Channel4,DMA_IT_TC,ENABLE);
+	
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
+  NVIC_InitTypeDef  NVIC_InitStructure;
+
+  /* Enable the USARTy_DMA1_IRQn Interrupt */
+  NVIC_InitStructure.NVIC_IRQChannel = DMA2_Channel4_5_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+	#endif
+	int wav_addr=0;
+  while (1)
+  {
+	//	for(int wav_addr=0; wav_addr<240000;)
+		
+		IWDG_ReloadCounter();//reload	
+		int ret = RunNetSevice();
+		
+		#if 0
+		if(1280==ret)
+		{
+			//GPIO_SetBits(GPIOA,GPIO_Pin_1);
+			//memcpy(g_u32dac12bit_buf0,g_u32dac12bit_buf3,1280);
+			//GPIO_ResetBits(GPIOA,GPIO_Pin_1);
+			//syslog(DBG,"dma cnt=%d",DMA_GetCurrDataCounter(DMA2_Channel4));
+			//DMA_Cmd(DMA2_Channel4, DISABLE);
+			DMA2_Channel4->CCR &= (uint16_t)(~DMA_CCR1_EN);
+			if(buf_index)
+			{// 当前播放1
+				DMA2_Channel4->CMAR = (uint32_t)&g_u32dac12bit_buf0;
+				buf_index = 0;
+			}
+			else
+			{ // 当前播放0
+				DMA2_Channel4->CMAR = (uint32_t)&g_u32dac12bit_buf1;
+				buf_index = 1;
+			}
+			DMA2_Channel4->CNDTR = DAC_BUF_SIZE;
+			//DMA_Cmd(DMA2_Channel4, ENABLE);
+			DMA2_Channel4->CCR |= DMA_CCR1_EN;
+//			if(buf_index)
+//			{
+//				memset((unsigned char*)g_u32dac12bit_buf3,g_u32dac12bit_buf1[639],640);
+//			}
+//			else
+//			{ 
+//				memset((unsigned char*)g_u32dac12bit_buf3,g_u32dac12bit_buf0[639],640);
+//			}
+//			
+			
+		}
+		continue;
+		#endif
+		
+		#if 1
+		GPIO_ResetBits(GPIOA,GPIO_Pin_1);
+		GPIO_SetBits(GPIOA,GPIO_Pin_1);
+		
+//		continue;
+		if(wav_addr>=192000)
+			wav_addr = 0;
+		if(buf_index != buf_index_history)
+		{
+			buf_index_history = buf_index;
+			if(0==buf_index_history )//&& 0==buf_ready[1])
+			{		// 当前转换buf0，buf1没有准备好
+					// 准备buf1 数据
+					//g_u32dac12bit_buf0[Idx] = (Sine12bit[sin_idx] << 16) + (Sine12bit[sin_idx]);
+					
+					#if 0
+					for(int j=0;j<DAC_BUF_SIZE;j++)
+					{
+						//g_u32dac12bit_buf1[j] =  (PCM_WAV_8K_U8B[wav_addr]<<20)+(PCM_WAV_8K_U8B[wav_addr+1]<<4);
+						#if PCM8U
+						g_u32dac12bit_buf1[j] =  (PCM_WAV_48K_U18[wav_addr]<<8)+(PCM_WAV_48K_U18[wav_addr+1]);
+						wav_addr += 2;
+						#else
+						//g_u32dac12bit_buf1[j] =  (PCM_WAV_44K1_U16B[wav_addr]<<24)+(PCM_WAV_44K1_U16B[wav_addr+1]<<16)+(PCM_WAV_44K1_U16B[wav_addr+2]<<8)+(PCM_WAV_44K1_U16B[wav_addr+3]);
+						g_u32dac12bit_buf1[j] =  (PCM_WAV_44K1_U16B[wav_addr+1]<<24)+(PCM_WAV_44K1_U16B[wav_addr]<<16)+(PCM_WAV_44K1_U16B[wav_addr+3]<<8)+(PCM_WAV_44K1_U16B[wav_addr+2]);
+						wav_addr += 4;
+						#endif
+					}
+					#else
+					if(FIFO_ERROR==fifo_pop_multiple(&pcm_fifo, (uint8_t*)g_u32dac12bit_buf1,1280))
+					{
+						memcpy(g_u32dac12bit_buf1,g_u32dac12bit_buf3,sizeof(g_u32dac12bit_buf3));
+						//printf("e1 ");
+						fifo_time_out++;
+					}
+					else
+					{
+				//		printf("d1");
+						fifo_time_out = 0;
+					}
+					#endif
+//					buf_ready[1] = 1;
+//					buf_ready[0] = 0;
+				
+			}
+			else if(1==buf_index_history)// && 0==buf_ready[0])
+			{		// 当前装换buf1，buf0没有准备好
+					// 准备buf0 数据
+					
+				#if 0
+				for(int j=0;j<DAC_BUF_SIZE;j++)
+				{
+					//g_u32dac12bit_buf0[j] =  (PCM_WAV_8K_U8B[wav_addr]<<20)+(PCM_WAV_8K_U8B[wav_addr+1]<<4);
+					#if PCM8U
+					g_u32dac12bit_buf0[j] =  (PCM_WAV_48K_U18[wav_addr]<<8)+(PCM_WAV_48K_U18[wav_addr+1]);
+					wav_addr += 2;
+					#else
+					//g_u32dac12bit_buf0[j] =  (PCM_WAV_44K1_U16B[wav_addr]<<24)+(PCM_WAV_44K1_U16B[wav_addr+1]<<16)+(PCM_WAV_44K1_U16B[wav_addr+2]<<8)+(PCM_WAV_44K1_U16B[wav_addr+3]);
+					g_u32dac12bit_buf0[j] =  (PCM_WAV_44K1_U16B[wav_addr+1]<<24)+(PCM_WAV_44K1_U16B[wav_addr]<<16)+(PCM_WAV_44K1_U16B[wav_addr+3]<<8)+(PCM_WAV_44K1_U16B[wav_addr+2]);
+					wav_addr += 4;
+					#endif
+				}
+				#else
+				if(FIFO_ERROR==fifo_pop_multiple(&pcm_fifo, (uint8_t*)g_u32dac12bit_buf0,1280))
+				{
+					memcpy(g_u32dac12bit_buf0,g_u32dac12bit_buf3,sizeof(g_u32dac12bit_buf3));
+					//printf("e0 ");
+					fifo_time_out++;
+				}
+				else
+				{
+			//		printf("d0");
+					fifo_time_out = 0;
+				}
+				#endif
+//					buf_ready[0] = 1;
+//					buf_ready[1] = 0;
+			}
+			if(fifo_time_out>138)
+			{
+				g_rcv_time_out++;
+				fifo_time_out=0;
+				if(sdz == 0)
+				{
+					GPIO_SetBits(GPIOC,GPIO_Pin_6);
+					sdz = 1;
+					printf("fifo tiemout, PA off\r\n");
+				}
+				if(g_rcv_time_out>5)
+				{
+					printf("rcv tiemout, restart\r\n");
+					NVIC_SystemReset();
+				}
+			}
+	
+		}
+		else
+		{
+		//	g_u32dac12bit_buf1[0] = 0;
+		}
+		#endif
+  }
+}
+
+void DMA2_Channel4_5_IRQHandler(void)
+{
+	
+  if(DMA_GetITStatus(DMA2_IT_TC4))
+  {
+		DMA_Cmd(DMA2_Channel4, DISABLE);
+		#if 1
+		if(1==buf_index)
+		{
+		//	printf("p0");
+			DMA2_Channel4->CMAR = (uint32_t)&g_u32dac12bit_buf0;
+			buf_index= 0;
+		//	buf_ready[1] = 0;
+		}
+		else
+		{
+		//	printf("p1");
+			DMA2_Channel4->CMAR = (uint32_t)&g_u32dac12bit_buf1;
+			buf_index= 1;
+		//	buf_ready[0] = 0;
+		}
+		#else
+		DMA2_Channel4->CMAR = (uint32_t)&g_u32dac12bit_buf3;  // 播放完毕，播放静音
+		//putchar('|');
+		#endif
+		DMA2_Channel4->CNDTR = DAC_BUF_SIZE;
+		DMA_Cmd(DMA2_Channel4, ENABLE);
+    //DMA_ClearITPendingBit(DMA2_IT_TC4);
+		DMA_ClearFlag(DMA2_IT_TC4);  
+  }
+}
+
+/**
+  * @brief  Configures the different system clocks.
+  * @param  None
+  * @retval None
+  */
+void RCC_Configuration(void)
+{   
+  /* Enable peripheral clocks ------------------------------------------------*/
+#if !defined STM32F10X_LD_VL && !defined STM32F10X_MD_VL
+  /* DMA2 clock enable */
+  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA2, ENABLE);
+#else
+  /* DMA1 clock enable */
+  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+#endif
+  /* GPIOA Periph clock enable */
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA|RCC_APB2Periph_GPIOC|
+					RCC_APB2Periph_USART1|RCC_APB2Periph_AFIO, ENABLE);
+  /* DAC Periph clock enable */
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_DAC, ENABLE);
+  /* TIM2 Periph clock enable */
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+}
+
+
+/**
+  * @brief  Configures the different GPIO ports.
+  * @param  None
+  * @retval None
+  */
+void GPIO_Configuration(void)
+{
+  GPIO_InitTypeDef GPIO_InitStructure;
+
+  /* Once the DAC channel is enabled, the corresponding GPIO pin is automatically 
+     connected to the DAC converter. In order to avoid parasitic consumption, 
+     the GPIO pin should be configured in analog */
+  GPIO_InitStructure.GPIO_Pin =  GPIO_Pin_4 | GPIO_Pin_5;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin =  GPIO_Pin_1;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed	= GPIO_Speed_50MHz;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin =  GPIO_Pin_6;
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	GPIO_SetBits(GPIOC,GPIO_Pin_6);
+}
+
+/**
+  * @brief  Inserts a delay time.
+  * @param  nCount: specifies the delay time length.
+  * @retval None
+  */
+void Delay(__IO uint32_t nCount)
+{
+  for(; nCount != 0; nCount--);
+}
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+PUTCHAR_PROTOTYPE
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the USART */
+//  
+
+// Set485Mode(RS485_1,MODE_TX);
+  USART_SendData(USART1, (uint8_t) ch);
+  /* Loop until the end of transmission */
+  while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET)
+  {}
+
+  return ch;
+}
+void Iwdg_Init(void)
+{
+	/* Check if the system has resumed from IWDG reset */
+	if (RCC_GetFlagStatus(RCC_FLAG_IWDGRST) != RESET)
+	{
+		/* IWDGRST flag set */
+		/* Turn on LED1 */
+	//	STM_EVAL_LEDOn(LED1);
+		syslog(DBG,"Iwdg reset");
+		/* Clear reset flags */
+		RCC_ClearFlag();
+	}
+	else
+	{
+		/* IWDGRST flag is not set */
+		/* Turn off LED1 */
+		//STM_EVAL_LEDOff(LED1);
+	}
+
+	/* IWDG timeout equal to 280 ms (the timeout may varies due to LSI frequency
+	 dispersion) */
+	/* Enable write access to IWDG_PR and IWDG_RLR registers */
+	IWDG_WriteAccessCmd(IWDG_WriteAccess_Enable);
+	
+	/* IWDG counter clock: 40KHz(LSI) / 32 = 1.25 KHz */
+	IWDG_SetPrescaler(IWDG_Prescaler_256);
+	
+	/* Set counter reload value to 349 */
+	IWDG_SetReload(349);
+	
+	/* Reload IWDG counter */
+	IWDG_ReloadCounter();
+	
+	/* Enable IWDG (the LSI oscillator will be enabled by hardware) */
+	IWDG_Enable();
+	syslog(DBG,"Iwdg init end");
+
+}
+#ifdef  USE_FULL_ASSERT
+
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t* file, uint32_t line)
+{ 
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+
+  /* Infinite loop */
+  while (1)
+  {
+  }
+}
+
+#endif
+
+/**
+  * @}
+  */ 
+
+/**
+  * @}
+  */ 
+
+/******************* (C) COPYRIGHT 2011 STMicroelectronics *****END OF FILE****/
